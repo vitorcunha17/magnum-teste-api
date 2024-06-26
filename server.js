@@ -3,59 +3,101 @@ const bodyParser = require("body-parser");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const cors = require("cors");
+const { MongoClient, ServerApiVersion, Decimal128 } = require("mongodb");
+const mongoose = require("mongoose");
+
+const uri =
+  "mongodb+srv://vitorribeirocunha:teste123@cluster0.sodwbus.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const tokenSecret = "0P0MGJJzZuFdA5W1HGbS8dtv7WgPt5Ks";
+
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
+});
 
 const app = express();
 const PORT = 3001;
 
-app.use(cors()); // Use o CORS aqui para permitir requisições de diferentes origens
+app.use(cors());
 app.use(bodyParser.json());
 
-// Simulação de bank de dados de usuários
-let users = [];
+async function connectToDB() {
+  try {
+    await client.connect();
+    console.log("Connected to MongoDB!");
+  } catch (error) {
+    console.error("Failed to connect to MongoDB:", error);
+    process.exit(1);
+  }
+}
 
 // Middleware para verificar o token JWT
 const verifyToken = (req, res, next) => {
-  const token = req.headers["authorization"];
-  if (!token)
+  let token = req.headers["authorization"];
+  if (!token) {
+    console.log("No token provided.");
     return res.status(403).send({ auth: false, message: "No token provided." });
+  }
 
-  jwt.verify(token, "your_secret_pixKey", (err, decoded) => {
-    // Adicione sua pixKey secreta aqui
-    if (err)
+  if (token.startsWith("Bearer ")) {
+    token = token.slice(7, token.length); // Remove "Bearer " from the token
+  }
+
+  jwt.verify(token, tokenSecret, (err, decoded) => {
+    if (err) {
+      console.log("Failed to authenticate token:", err.message);
       return res
         .status(500)
         .send({ auth: false, message: "Failed to authenticate token." });
+    }
     req.userId = decoded.id;
     next();
   });
 };
 
 // Rota de registro de usuário
-app.post("/register", (req, res) => {
-  const hashedPassword = bcrypt.hashSync(req.body.password, 8);
-  const user = {
-    id: users.length + 1,
-    email: req.body.email,
-    password: hashedPassword,
-  };
-  users.push(user);
-  res.status(200).send({ message: "User registered successfully!" });
+app.post("/register", async (req, res) => {
+  try {
+    const hashedPassword = bcrypt.hashSync(req.body.password, 8);
+    const db = client.db("magnum-test-db");
+    const result = await db.collection("users").insertOne({
+      email: req.body.email,
+      password: hashedPassword,
+      saldo: Decimal128.fromString("0.00"),
+    });
+    res.status(200).send({ message: "User registered successfully!" });
+  } catch (error) {
+    res.status(500).send("There was a problem registering the user.");
+  }
 });
 
 // Rota de login
-app.post("/login", (req, res) => {
-  const user = users.find((u) => u.email === req.body.email);
-  if (!user) return res.status(404).send("No user found.");
+app.post("/login", async (req, res) => {
+  try {
+    const db = client.db("magnum-test-db");
+    const user = await db
+      .collection("users")
+      .findOne({ email: req.body.email });
+    if (!user) return res.status(404).send("No user found.");
 
-  const passwordIsValid = bcrypt.compareSync(req.body.password, user.password);
-  if (!passwordIsValid)
-    return res.status(401).send({ auth: false, token: null });
+    const passwordIsValid = bcrypt.compareSync(
+      req.body.password,
+      user.password
+    );
+    if (!passwordIsValid)
+      return res.status(401).send({ auth: false, token: null });
 
-  const token = jwt.sign({ id: user.id }, "your_secret_pixKey", {
-    expiresIn: 86400,
-  }); // Expira em 24 horas, adicione sua pixKey secreta aqui
+    const token = jwt.sign({ id: user._id }, tokenSecret, {
+      expiresIn: 86400,
+    });
 
-  res.status(200).send({ auth: true, token: token });
+    res.status(200).send({ auth: true, token: token });
+  } catch (error) {
+    res.status(500).send("Error on the server.");
+  }
 });
 
 // Rota de logout
@@ -64,56 +106,21 @@ app.post("/logout", (req, res) => {
 });
 
 // Rota protegida (exemplo)
-app.get("/me", verifyToken, (req, res) => {
-  const user = users.find((u) => u.id === req.userId);
-  if (!user) return res.status(404).send("No user found.");
-
-  res.status(200).send(user);
+app.get("/me", verifyToken, async (req, res) => {
+  try {
+    const db = client.db("magnum-test-db");
+    const user = await db
+      .collection("users")
+      .findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
+    if (!user) return res.status(404).send("No user found.");
+    res.status(200).send(user);
+  } catch (error) {
+    res.status(500).send("There was a problem finding the user.");
+  }
 });
 
-// Iniciar o servidor
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
-// Definir o array de transferências fora das rotas
-let transferencias = [{
-    "transactionType": "TED",
-    "bank": "001",
-    "agency": "1234",
-    "account": "123456-7",
-    "value": "1002",
-    "transferDate": "2023-04-01",
-    "description": "Pagamento de serviço"
-},
-{
-    "transactionType": "TED",
-    "bank": "001",
-    "agency": "1234",
-    "account": "123456-7",
-    "value": "1001",
-    "transferDate": "2023-04-01",
-    "description": "Pagamento de serviço"
-},
-{
-    "transactionType": "TED",
-    "bank": "001",
-    "agency": "1234",
-    "account": "123456-7",
-    "value": "1004",
-    "transferDate": "2024-06-25T03:00:00.000Z",
-    "description": "Pagamento de serviço"
-},
-{
-    "description" : "teste",
-    "pixKey" : "45134552843",
-    "transactionType" : "PIX",
-    "transferDate" : "2024-06-25T03:00:00.000Z",
-    "value" : "500"
-}
-];
-
-app.post("/transfer", (req, res) => {
+// Rota para criar uma nova transferência
+app.post("/transfer", verifyToken, async (req, res) => {
   const {
     transactionType,
     bank,
@@ -144,25 +151,55 @@ app.post("/transfer", (req, res) => {
     });
   }
 
-  // Criar um objeto de transferência com os dados recebidos
-  const transferencia = {
-    transactionType,
-    bank,
-    agency,
-    account,
-    pixKey,
-    value,
-    transferDate,
-    description,
-  };
+  try {
+    const db = client.db("magnum-test-db");
+    const transferencia = {
+      userId: req.userId, // Adiciona o ID do usuário
+      transactionType,
+      bank,
+      agency,
+      account,
+      pixKey,
+      value,
+      transferDate,
+      description,
+    };
 
-  // Salvar a transferência no array
-  transferencias.push(transferencia);
-
-  // Responder com sucesso
-  res.status(200).send({ message: "Transferência realizada com sucesso!" });
+    await db.collection("transfers").insertOne(transferencia);
+    res.status(200).send({ message: "Transferência realizada com sucesso!" });
+  } catch (error) {
+    res.status(500).send("There was a problem saving the transfer.");
+  }
 });
 
-app.get("/transfers", (req, res) => {
-  res.status(200).send(transferencias);
+// Rota para obter todas as transferências de um usuário
+app.get("/transfers", verifyToken, async (req, res) => {
+  try {
+    const db = client.db("magnum-test-db");
+    const transferencias = await db
+      .collection("transfers")
+      .find({ userId: req.userId })
+      .toArray();
+    res.status(200).send(transferencias);
+  } catch (error) {
+    res.status(500).send("There was a problem retrieving the transfers.");
+  }
+});
+
+// Rota protegida para visualizar o saldo
+app.get("/saldo", verifyToken, async (req, res) => {
+  try {
+    const db = client.db("magnum-test-db");
+    const user = await db.collection("users").findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
+    if (!user) return res.status(404).send("No user found.");
+    res.status(200).send({ saldo: user.saldo });
+  } catch (error) {
+    res.status(500).send("There was a problem fetching the user's balance.");
+  }
+});
+
+// Iniciar o servidor
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+  connectToDB();
 });
