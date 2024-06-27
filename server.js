@@ -66,7 +66,7 @@ app.post("/register", async (req, res) => {
     const result = await db.collection("users").insertOne({
       email: req.body.email,
       password: hashedPassword,
-      saldo: Decimal128.fromString("0.00") // Inicializa o saldo com 0.00
+      saldo: Decimal128.fromString("0.00"), // Inicializa o saldo com 0.00
     });
     res.status(200).send({ message: "User registered successfully!" });
   } catch (error) {
@@ -111,7 +111,9 @@ app.post("/logout", (req, res) => {
 app.get("/balance", verifyToken, async (req, res) => {
   try {
     const db = client.db("magnum-test-db");
-    const user = await db.collection("users").findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
+    const user = await db
+      .collection("users")
+      .findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
     if (!user) return res.status(404).send("No user found.");
     res.status(200).send({ saldo: user.saldo.toString() });
   } catch (error) {
@@ -169,7 +171,9 @@ app.post("/transfer", verifyToken, async (req, res) => {
 
   try {
     const db = client.db("magnum-test-db");
-    const user = await db.collection("users").findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
+    const user = await db
+      .collection("users")
+      .findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
     if (!user) return res.status(404).send("No user found.");
 
     const currentSaldo = parseFloat(user.saldo.toString());
@@ -213,6 +217,7 @@ app.get("/transfers", verifyToken, async (req, res) => {
     const transferencias = await db
       .collection("transfers")
       .find({ userId: req.userId })
+      .sort({ transferDate: 1 })
       .toArray();
     res.status(200).send(transferencias);
   } catch (error) {
