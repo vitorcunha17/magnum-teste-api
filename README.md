@@ -9,8 +9,13 @@ Este projeto é uma API simples para gerenciar transferências bancárias, supor
 
 ## Funcionalidades
 
-- Realizar transferências do tipo TED ou PIX.
-- Listar todas as transferências realizadas.
+- Login
+- Logout
+- Cadastro
+- Cadastro de senha de transação
+- Listar saldo o usuário
+- Realizar transferências do tipo TED ou PIX
+- Listar todas as transferências realizadas
 
 ## Como Executar
 
