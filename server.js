@@ -62,10 +62,15 @@ const verifyToken = (req, res, next) => {
 app.post("/register", async (req, res) => {
   try {
     const hashedPassword = bcrypt.hashSync(req.body.password, 8);
+    const hashedTransactionPassword = bcrypt.hashSync(
+      req.body.transactionPassword,
+      8
+    );
     const db = client.db("magnum-test-db");
-    const result = await db.collection("users").insertOne({
+    await db.collection("users").insertOne({
       email: req.body.email,
       password: hashedPassword,
+      transactionPassword: hashedTransactionPassword,
       saldo: Decimal128.fromString("0.00"), // Inicializa o saldo com 0.00
     });
     res.status(200).send({ message: "User registered successfully!" });
@@ -91,9 +96,7 @@ app.post("/login", async (req, res) => {
     if (!passwordIsValid)
       return res.status(401).send({ auth: false, token: null });
 
-    const token = jwt.sign({ id: user._id }, tokenSecret, {
-      expiresIn: 86400,
-    });
+    const token = jwt.sign({ id: user._id }, tokenSecret, { expiresIn: 86400 });
 
     res.status(200).send({ auth: true, token: token });
   } catch (error) {
@@ -137,6 +140,35 @@ app.get("/me", verifyToken, async (req, res) => {
   }
 });
 
+// Rota para configurar a senha de transação
+app.post("/transaction-password", verifyToken, async (req, res) => {
+  try {
+    const { transactionPassword } = req.body;
+    if (!transactionPassword) {
+      return res
+        .status(400)
+        .send({ message: "Transaction password is required." });
+    }
+
+    const hashedTransactionPassword = bcrypt.hashSync(transactionPassword, 8);
+
+    const db = client.db("magnum-test-db");
+    await db
+      .collection("users")
+      .updateOne(
+        { _id: new mongoose.Types.ObjectId(req.userId) },
+        { $set: { transactionPassword: hashedTransactionPassword } }
+      );
+
+    res.status(200).send({ message: "Transaction password set successfully!" });
+  } catch (error) {
+    console.error("Error setting transaction password:", error);
+    res
+      .status(500)
+      .send("There was a problem setting the transaction password.");
+  }
+});
+
 // Rota para criar uma nova transferência
 app.post("/transfer", verifyToken, async (req, res) => {
   const {
@@ -148,12 +180,14 @@ app.post("/transfer", verifyToken, async (req, res) => {
     value,
     transferDate,
     description,
+    transactionPassword,
   } = req.body;
 
   // Validação básica dos campos obrigatórios
-  if (!transactionType || !value || !transferDate) {
+  if (!transactionType || !value || !transferDate || !transactionPassword) {
     return res.status(400).send({
-      message: "Campos obrigatórios: transactionType, value, transferDate.",
+      message:
+        "Campos obrigatórios: transactionType, value, transferDate, transactionPassword.",
     });
   }
 
@@ -175,6 +209,13 @@ app.post("/transfer", verifyToken, async (req, res) => {
       .collection("users")
       .findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
     if (!user) return res.status(404).send("No user found.");
+
+    const passwordIsValid = bcrypt.compareSync(
+      transactionPassword,
+      user.transactionPassword
+    );
+    if (!passwordIsValid)
+      return res.status(401).send({ message: "Invalid transaction password." });
 
     const currentSaldo = parseFloat(user.saldo.toString());
     const transferValue = parseFloat(value);
