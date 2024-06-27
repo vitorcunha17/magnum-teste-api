@@ -66,10 +66,11 @@ app.post("/register", async (req, res) => {
     const result = await db.collection("users").insertOne({
       email: req.body.email,
       password: hashedPassword,
-      saldo: Decimal128.fromString("0.00"),
+      saldo: Decimal128.fromString("0.00") // Inicializa o saldo com 0.00
     });
     res.status(200).send({ message: "User registered successfully!" });
   } catch (error) {
+    console.error("Error registering user:", error);
     res.status(500).send("There was a problem registering the user.");
   }
 });
@@ -96,6 +97,7 @@ app.post("/login", async (req, res) => {
 
     res.status(200).send({ auth: true, token: token });
   } catch (error) {
+    console.error("Error on the server:", error);
     res.status(500).send("Error on the server.");
   }
 });
@@ -103,6 +105,19 @@ app.post("/login", async (req, res) => {
 // Rota de logout
 app.post("/logout", (req, res) => {
   res.status(200).send({ auth: false, token: null });
+});
+
+// Rota protegida para visualizar o saldo
+app.get("/balance", verifyToken, async (req, res) => {
+  try {
+    const db = client.db("magnum-test-db");
+    const user = await db.collection("users").findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
+    if (!user) return res.status(404).send("No user found.");
+    res.status(200).send({ saldo: user.saldo.toString() });
+  } catch (error) {
+    console.error("Error fetching user's balance:", error);
+    res.status(500).send("There was a problem fetching the user's balance.");
+  }
 });
 
 // Rota protegida (exemplo)
@@ -115,6 +130,7 @@ app.get("/me", verifyToken, async (req, res) => {
     if (!user) return res.status(404).send("No user found.");
     res.status(200).send(user);
   } catch (error) {
+    console.error("Error finding user:", error);
     res.status(500).send("There was a problem finding the user.");
   }
 });
@@ -153,6 +169,17 @@ app.post("/transfer", verifyToken, async (req, res) => {
 
   try {
     const db = client.db("magnum-test-db");
+    const user = await db.collection("users").findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
+    if (!user) return res.status(404).send("No user found.");
+
+    const currentSaldo = parseFloat(user.saldo.toString());
+    const transferValue = parseFloat(value);
+    const newSaldo = currentSaldo - transferValue;
+
+    if (newSaldo < 0) {
+      return res.status(400).send({ message: "Saldo insuficiente." });
+    }
+
     const transferencia = {
       userId: req.userId, // Adiciona o ID do usuário
       transactionType,
@@ -160,14 +187,21 @@ app.post("/transfer", verifyToken, async (req, res) => {
       agency,
       account,
       pixKey,
-      value,
+      value: Decimal128.fromString(transferValue.toFixed(2)), // Garante que o valor seja ponto flutuante
       transferDate,
       description,
     };
 
+    // Atualiza o saldo do usuário
+    await db.collection("users").updateOne(
+      { _id: new mongoose.Types.ObjectId(req.userId) },
+      { $set: { saldo: Decimal128.fromString(newSaldo.toFixed(2)) } } // Garante que o saldo seja ponto flutuante
+    );
+
     await db.collection("transfers").insertOne(transferencia);
     res.status(200).send({ message: "Transferência realizada com sucesso!" });
   } catch (error) {
+    console.error("Error saving the transfer:", error);
     res.status(500).send("There was a problem saving the transfer.");
   }
 });
@@ -182,19 +216,8 @@ app.get("/transfers", verifyToken, async (req, res) => {
       .toArray();
     res.status(200).send(transferencias);
   } catch (error) {
+    console.error("Error retrieving the transfers:", error);
     res.status(500).send("There was a problem retrieving the transfers.");
-  }
-});
-
-// Rota protegida para visualizar o saldo
-app.get("/saldo", verifyToken, async (req, res) => {
-  try {
-    const db = client.db("magnum-test-db");
-    const user = await db.collection("users").findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
-    if (!user) return res.status(404).send("No user found.");
-    res.status(200).send({ saldo: user.saldo });
-  } catch (error) {
-    res.status(500).send("There was a problem fetching the user's balance.");
   }
 });
 
