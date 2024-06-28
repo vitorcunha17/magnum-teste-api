@@ -24,7 +24,7 @@ Para executar este projeto localmente, siga os passos abaixo:
 1. Clone o repositório para sua máquina local.
 2. Navegue até a pasta do projeto via terminal.
 3. Execute `npm install` para instalar as dependências.
-4. Execute `node server.js` para iniciar o servidor.
+4. Execute `node server.js` ou `npm start` para iniciar o servidor.
 5. O servidor estará rodando em `http://localhost:3001`.
 
 ## Endpoints
