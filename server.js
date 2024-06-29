@@ -267,6 +267,43 @@ app.get("/transfers", verifyToken, async (req, res) => {
   }
 });
 
+// Rota para realizar um depósito
+app.post("/deposit", verifyToken, async (req, res) => {
+  const { value } = req.body;
+
+  // Validação básica do campo obrigatório
+  if (!value) {
+    return res.status(400).send({
+      message: "Campo obrigatório: value.",
+    });
+  }
+
+  try {
+    const db = client.db("magnum-test-db");
+    const user = await db
+      .collection("users")
+      .findOne({ _id: new mongoose.Types.ObjectId(req.userId) });
+    if (!user) return res.status(404).send("No user found.");
+
+    const currentSaldo = parseFloat(user.saldo.toString());
+    const depositValue = parseFloat(value);
+    const newSaldo = currentSaldo + depositValue;
+
+    const updatedUser = await db.collection("users").updateOne(
+      { _id: new mongoose.Types.ObjectId(req.userId) },
+      { $set: { saldo: Decimal128.fromString(newSaldo.toFixed(2)) } }
+    );
+
+    res.status(200).send({
+      message: "Depósito realizado com sucesso!",
+      novoSaldo: newSaldo.toFixed(2),
+    });
+  } catch (error) {
+    console.error("Erro ao realizar o depósito:", error);
+    res.status(500).send("Houve um problema ao realizar o depósito.");
+  }
+});
+
 // Iniciar o servidor
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
