@@ -62,15 +62,11 @@ const verifyToken = (req, res, next) => {
 app.post("/register", async (req, res) => {
   try {
     const hashedPassword = bcrypt.hashSync(req.body.password, 8);
-    const hashedTransactionPassword = bcrypt.hashSync(
-      req.body.transactionPassword,
-      8
-    );
     const db = client.db("magnum-test-db");
     await db.collection("users").insertOne({
       email: req.body.email,
       password: hashedPassword,
-      transactionPassword: hashedTransactionPassword,
+      transactionPassword: "",
       saldo: Decimal128.fromString("0.00"), // Inicializa o saldo com 0.00
     });
     res.status(200).send({ message: "User registered successfully!" });
